@@ -2,6 +2,7 @@ import cloudinary from "../lib/cloudinary.js";
 import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
+import fs from "fs";
 
 const login = async (req, res) => {
     const { email, password } = req.body;
@@ -68,17 +69,43 @@ const logout = (req, res) => {
     }
 };
 
+// const updateProfile = async (req, res) => {
+//     try {
+//         const { profilePic } = req.body;
+//         // Get user from protectRoute middleware
+//         const userId = req.user._id;
+//         if (!profilePic) {
+//             return res.status(400).json({ message: "Profile picture is required." });
+//         }
+//         const uploadResult = await cloudinary.uploader.upload(profilePic, { folder: "chatweb/profile-pics" });
+//         const updateUser = await User.findByIdAndUpdate(userId, { profilePic: uploadResult.secure_url }, { new: true });
+//         return res.status(200).json({ message: "Profile picture updated successfully.", data: updateUser });
+//     } catch (error) {
+//         console.error("Error during update profile picture:", error);
+//         return res.status(500).json({ message: "Internal server error." });
+//     }
+// };
+
 const updateProfile = async (req, res) => {
     try {
-        const { profilePic } = req.body;
-        // Get user from protectRoute middleware
         const userId = req.user._id;
-        if (!profilePic) {
-            return res.status(400).json({ message: "Profile picture is required." });
+
+        if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded" });
         }
-        const uploadResult = await cloudinary.uploader.upload(profilePic);
-        const updateUser = await User.findByIdAndUpdate(userId, { profilePic: uploadResult.secure_url }, { new: true });
-        return res.status(200).json({ message: "Profile picture updated successfully.", data: updateUser });
+
+        const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+            folder: "chatweb/profile-pics",
+        });
+
+        fs.unlinkSync(req.file.path);
+
+        const updatedUser = await User.findByIdAndUpdate(userId, { profilePic: uploadResult.secure_url }, { new: true });
+
+        return res.status(200).json({
+            message: "Profile picture updated successfully",
+            data: updatedUser,
+        });
     } catch (error) {
         console.error("Error during update profile picture:", error);
         return res.status(500).json({ message: "Internal server error." });

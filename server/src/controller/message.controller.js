@@ -39,7 +39,7 @@ export const sendMessage = async (req, res) => {
 
         let imgurl;
         if (img) {
-            const uploadimg = await cloudinary.uploader.upload(img, { folder: "chatapp" });
+            const uploadimg = await cloudinary.uploader.upload(img, { folder: "chatweb/messpic" });
             imgurl = uploadimg.secure_url;
         }
 
