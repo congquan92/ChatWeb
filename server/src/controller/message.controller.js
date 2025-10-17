@@ -51,7 +51,8 @@ export const sendMessage = async (req, res) => {
         });
 
         await newMessage.save();
-        // to do real time with socket io
+        // Todo real time with socket io
+
         res.status(201).json(newMessage);
     } catch (error) {
         console.error("Error fetching sendMessage:", error);
