@@ -26,6 +26,8 @@ interface AuthStore {
 
     /** Upload avatar qua FormData (multer) */
     updateProfile: (file: File) => Promise<void>;
+
+    onlineUsers: Array<string>; //id của những user đang online
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -82,6 +84,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
             toast.success("Login successful!");
         } catch (error) {
             console.error("Login error:", error);
+            // const errA = error as AxiosError;
             toast.error(`Login failed. Please try again. ${error?.response?.data?.message || " "}`);
         } finally {
             set({ isLoggingIn: false });
@@ -127,4 +130,5 @@ export const useAuthStore = create<AuthStore>((set) => ({
             set({ isUpdatingProfile: false });
         }
     },
+    onlineUsers: [],
 }));
