@@ -2,6 +2,7 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import cloudinary from "../lib/cloudinary.js";
 import fs from "fs";
+import { getReceiverSocketId, io } from "../lib/socket.js";
 
 export const getUserSidebar = async (req, res) => {
     try {
@@ -79,15 +80,19 @@ export const sendMessage = async (req, res) => {
                 if (err) console.warn("Cannot remove temp file:", err.message);
             });
         }
-        const newMessage = await Message.create({
+        const newMessage = await Message({
             senderId,
             receiverId,
             text: text?.trim() || "",
             image: imgurl,
         });
 
-        // Todo real time with socket io
-        // await newMessage.save();
+        await newMessage.save();
+
+        const receiverSocketId = getReceiverSocketId(receiverId);
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit("newMessage", newMessage);
+        }
 
         return res.status(201).json(newMessage);
     } catch (error) {
