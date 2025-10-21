@@ -1,7 +1,7 @@
 import express from "express";
 const router = express.Router();
 import { protectRoute, uploadMsgImageDisk } from "../middleware/auth.middleware.js";
-import { getUserSidebar, getMessage, sendMessage, deleteMessage } from "../controller/message.controller.js";
+import { getUserSidebar, getMessage, sendMessage, deleteMessage, editMessage } from "../controller/message.controller.js";
 
 router.use(protectRoute);
 
@@ -12,5 +12,7 @@ router.get("/:id", getMessage);
 router.post("/send/:id", uploadMsgImageDisk.single("image"), sendMessage);
 
 router.delete("/delete/:messageId/:receiverId", deleteMessage);
+
+router.put("/edit/:messageId/:receiverId", editMessage);
 
 export default router;

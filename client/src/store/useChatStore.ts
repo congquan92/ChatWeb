@@ -36,6 +36,7 @@ interface ChatStore {
     subscribeToMessages: () => void;
     unsubscribeFromMessages: () => void;
     deleteMessage: (messageId: string, receiverId: string) => Promise<void>;
+    editMessage: (messageId: string, receiverId: string, text: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -115,10 +116,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             }));
         });
         // 2. nhận sự kiện xóa từ server bắt render giao diện cho người nhận (read more :https://docs.google.com/document/d/1uTVC5umL_rOf7Vvud9WZsB4JYNTYlcqBORrhNDlfsaE/edit?usp=drive_link)
+
         socket?.on("deleteMessage", (messageId) => {
             set((state) => ({
                 messages: state.messages.filter((msg) => msg._id !== messageId),
             }));
+            toast.success("1 message was deleted");
+        });
+
+        socket?.on("editMessage", ({ messageId, newText }) => {
+            console.log("Received editMessage event:", { messageId, newText });
+            set((state) => ({
+                messages: state.messages.map((msg) => (msg._id === messageId ? { ...msg, text: newText } : msg)),
+            }));
+            toast.success("1 message was edited");
         });
     },
 
@@ -140,6 +151,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         } catch (error) {
             console.error("Error deleting message:", error);
             toast.error("Failed to delete message. Please try again.");
+        }
+    },
+
+    editMessage: async (messageId: string, receiverId: string, text: string) => {
+        const { messages } = get();
+        try {
+            const res = await axiosInstance.put(`/messages/edit/${messageId}/${receiverId}`, { text });
+            const updatedMessage = res.data;
+            const updatedMessages = messages.map((msg) => (msg._id === messageId ? updatedMessage : msg));
+            set({ messages: updatedMessages });
+            toast.success("Message edited successfully");
+        } catch (error) {
+            console.error("Error editing message:", error);
+            toast.error("Failed to edit message. Please try again.");
         }
     },
 }));

@@ -5,10 +5,9 @@ import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
-import toast from "react-hot-toast";
 
 export default function ChatContainer() {
-    const { messages, isMessagesLoading, getMessages, selectedUser, subscribeToMessages, unsubscribeFromMessages, deleteMessage } = useChatStore();
+    const { messages, isMessagesLoading, getMessages, selectedUser, subscribeToMessages, unsubscribeFromMessages, deleteMessage, editMessage } = useChatStore();
     const { authUser } = useAuthStore();
     const messageRef = useRef<HTMLDivElement>(null);
 
@@ -31,12 +30,11 @@ export default function ChatContainer() {
         deleteMessage(messageId, receiverId);
     };
 
-    const handleEdit = (messageId: string) => {
-        try {
-            toast.success("Đã chỉnh sửa tin nhắn" + messageId);
-        } catch (err) {
-            toast.error("Chỉnh sửa thất bại");
-            console.error(err);
+    const handleEdit = (messageId: string, receiverId: string, text: string) => {
+        // editMessage(messageId, receiverId, text);
+        const newText = prompt("Edit your message:", text);
+        if (newText) {
+            editMessage(messageId, receiverId, newText.trim());
         }
     };
 
@@ -74,7 +72,7 @@ export default function ChatContainer() {
                                         </button>
                                         <ul tabIndex={0} className="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box w-36">
                                             <li>
-                                                <button onClick={() => handleEdit(message._id)}>
+                                                <button onClick={() => handleEdit(message._id, message.receiverId, message.text || "")}>
                                                     <Pencil size={14} /> Chỉnh sửa
                                                 </button>
                                             </li>

@@ -126,3 +126,25 @@ export const deleteMessage = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+export const editMessage = async (req, res) => {
+    try {
+        const senderId = req.user._id;
+        const { messageId, receiverId } = req.params;
+        const { text } = req.body;
+        const checked = await Message.findOne({ _id: messageId, receiverId, senderId });
+        if (!checked) {
+            return res.status(403).json({ message: "You are not authorized to edit this message" });
+        }
+
+        const updatedMessage = await Message.findByIdAndUpdate(messageId, { text }, { new: true }); // có thể sau này thêm field edit trong schema
+        const receiverSocketId = getReceiverSocketId(receiverId);
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit("editMessage", { messageId, newText: updatedMessage.text });
+        }
+        res.status(200).json(updatedMessage);
+    } catch (error) {
+        console.error("Error editing message:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
