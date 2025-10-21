@@ -19,6 +19,16 @@ const messageSchema = new mongoose.Schema(
             type: String,
             default: null,
         },
+        // Các trường mã hóa
+        encryptedData: {
+            type: String, // Dữ liệu được mã hóa bằng AES
+        },
+        encryptedKey: {
+            type: String, // Khóa AES được mã hóa bằng RSA
+        },
+        iv: {
+            type: String, // Initialization Vector cho AES
+        },
     },
     { timestamps: true }
 );
