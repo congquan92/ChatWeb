@@ -100,3 +100,29 @@ export const sendMessage = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
+export const deleteMessage = async (req, res) => {
+    try {
+        const senderId = req.user._id;
+        const { messageId, receiverId } = req.params;
+
+        const checked = await Message.findOne({ _id: messageId, receiverId, senderId });
+        if (!checked) {
+            return res.status(403).json({ message: "You are not authorized to delete this message" });
+        }
+        //socket ID CỤ THỂ của người nhận
+        const receiverSocketId = getReceiverSocketId(receiverId);
+        //CHỈ KHI người nhận đang online (có socket ID)
+        if (receiverSocketId) {
+            //Gửi sự kiện ĐẾN DUY NHẤT socket ID đó
+            io.to(receiverSocketId).emit("deleteMessage", messageId);
+        }
+
+        await Message.findByIdAndDelete(messageId);
+
+        res.status(204).send();
+    } catch (error) {
+        console.error("Error deleting message:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};

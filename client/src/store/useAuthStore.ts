@@ -29,7 +29,7 @@ interface AuthStore {
 
     onlineUsers: Array<string>; //id của những user đang online
     socket: Socket | null;
-    connectSocket: () => void;
+    connectSocket: (user?: AuthUser) => void;
     disconnectSocket: () => void;
 }
 
@@ -58,8 +58,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({ isSigningUp: true });
         try {
             const res = await axiosInstance.post("/auth/sign-up", data);
-            set({ authUser: res.data.data });
+            const user = res.data.data;
+            set({ authUser: user });
             toast.success("Signup successful!");
+            get().connectSocket(user);
         } catch (error) {
             console.error("Signup error:", error);
             toast.error("Signup failed. Please try again.");
@@ -75,8 +77,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
                 /* khi mà m đăng xuất cái checkAuth sẽ được tự gọi do bị thay đổi và hệ thống được cập nhật dữ liêu  */
             }
             set({ authUser: null });
-            get().disconnectSocket();
             toast.success("Logout successful!");
+            get().disconnectSocket();
         } catch (error) {
             console.error("Logout error:", error);
             toast.error(`Logout failed. Please try again.`);
@@ -87,9 +89,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({ isLoggingIn: true });
         try {
             const res = await axiosInstance.post("/auth/login", data);
-            set({ authUser: res.data.data });
-            get().connectSocket();
+            const user = res.data.data;
+            console.log("Login response user:", user);
+            console.log("User ID:", user?._id);
+            set({ authUser: user });
             toast.success("Login successful!");
+            get().connectSocket(user);
         } catch (error) {
             console.error("Login error:", error);
             // const errA = error as AxiosError;
@@ -98,20 +103,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             set({ isLoggingIn: false });
         }
     },
-
-    // updateProfile: async (data) => {
-    //     set({ isUpdatingProfile: true });
-    //     try {
-    //         const res = await axiosInstance.put("/auth/update-profile", data);
-    //         set({ authUser: res.data });
-    //         toast.success("Profile updated successfully!");
-    //     } catch (error) {
-    //         console.error("Update profile error:", error);
-    //         toast.error(`Profile update failed. Please try again. ${error?.response?.data?.message || " "}`);
-    //     } finally {
-    //         set({ isUpdatingProfile: false });
-    //     }
-    // },
 
     updateProfile: async (file) => {
         set({ isUpdatingProfile: true });
@@ -139,26 +130,37 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         }
     },
 
-    connectSocket: () => {
-        const { authUser } = get();
+    connectSocket: (user?: AuthUser) => {
+        const authUser = user || get().authUser;
+        console.log("connectSocket called with user:", user);
+        console.log("connectSocket authUser:", authUser);
+        console.log("connectSocket userId:", authUser?._id);
+
         if (!authUser || get().socket?.connected) {
+            console.log("Socket connection skipped:", {
+                hasAuthUser: !!authUser,
+                isConnected: get().socket?.connected,
+            });
             return;
         }
+
         const socket = io(import.meta.env.VITE_SOCKET_URL, {
             query: { userId: authUser._id },
         });
-        socket.connect();
 
+        console.log("Socket created with userId:", authUser._id);
+        socket.connect();
         set({ socket: socket });
 
         socket.on("onlineUsers", (userIds) => {
+            console.log("onlineUsers event received:", userIds);
             set({ onlineUsers: userIds });
         });
     },
+
     disconnectSocket: () => {
         if (get().socket?.connected) {
             get().socket?.disconnect();
-            set({ socket: null });
         }
     },
 }));

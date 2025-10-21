@@ -12,12 +12,13 @@ import { Toaster } from "react-hot-toast";
 import SignUpPage from "./page/siginupPage";
 
 function App() {
-    const { checkAuth, authUser, isCheckingAuth } = useAuthStore();
+    const { checkAuth, authUser, isCheckingAuth, onlineUsers } = useAuthStore();
+
+    console.log({ onlineUsers });
 
     useEffect(() => {
         checkAuth();
     }, [checkAuth]);
-    console.log({ isCheckingAuth, authUser });
 
     if (isCheckingAuth && !authUser) {
         return (

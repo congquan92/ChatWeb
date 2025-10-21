@@ -18,7 +18,7 @@ const login = async (req, res) => {
         }
 
         generateToken(user._id, res);
-        return res.status(200).json({ message: "Login successful.", data: { id: user._id, fullname: user.fullname, email: user.email, profilePic: user.profilePic } });
+        return res.status(200).json({ message: "Login successful.", data: { _id: user._id, fullname: user.fullname, email: user.email, profilePic: user.profilePic } });
     } catch (error) {
         console.error("Error during login:", error);
         return res.status(500).json({ message: "Internal server error." });
@@ -50,7 +50,7 @@ const signUp = async (req, res) => {
             // gen jwt token
             generateToken(newUser._id, res);
             await newUser.save();
-            return res.status(201).json({ message: "User created successfully.", data: { id: newUser._id, fullname: newUser.fullname, email: newUser.email, profilePic: newUser.profilePic } });
+            return res.status(201).json({ message: "User created successfully.", data: { _id: newUser._id, fullname: newUser.fullname, email: newUser.email, profilePic: newUser.profilePic } });
         } else {
             return res.status(400).json({ message: "User creation failed." });
         }

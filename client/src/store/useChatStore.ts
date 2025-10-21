@@ -35,6 +35,7 @@ interface ChatStore {
     sendMessage: (form: FormData) => Promise<void>;
     subscribeToMessages: () => void;
     unsubscribeFromMessages: () => void;
+    deleteMessage: (messageId: string, receiverId: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -100,6 +101,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             toast.error("Failed to send message. Please try again.");
         }
     },
+
     subscribeToMessages: () => {
         const { selectedUser } = get();
         if (!selectedUser) return;
@@ -107,9 +109,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         socket?.on("newMessage", (message) => {
             const isMessSentByAuthUser = message.senderId === selectedUser._id;
-            if (!isMessSentByAuthUser) return; // chỉ nhận message từ user đang chat thôi
+            if (!isMessSentByAuthUser) return; // chỉ nhận message từ user đang chat
             set((state) => ({
                 messages: [...(state.messages ?? []), message],
+            }));
+        });
+        // 2. nhận sự kiện xóa từ server bắt render giao diện cho người nhận (read more :https://docs.google.com/document/d/1uTVC5umL_rOf7Vvud9WZsB4JYNTYlcqBORrhNDlfsaE/edit?usp=drive_link)
+        socket?.on("deleteMessage", (messageId) => {
+            set((state) => ({
+                messages: state.messages.filter((msg) => msg._id !== messageId),
             }));
         });
     },
@@ -119,5 +127,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (!selectedUser) return;
         const socket = useAuthStore.getState().socket;
         socket?.off("newMessage");
+    },
+
+    deleteMessage: async (messageId: string, receiverId: string) => {
+        const { messages } = get();
+        try {
+            // 1. render giao diện lập tức cho người xóa (trong lúc đó gửi yêu cầu xóa lên server) // read more : https://docs.google.com/document/d/1uTVC5umL_rOf7Vvud9WZsB4JYNTYlcqBORrhNDlfsaE/edit?usp=drive_link
+            await axiosInstance.delete(`/messages/delete/${messageId}/${receiverId}`);
+            const updatedMessages = messages.filter((msg) => msg._id !== messageId); // lọc ( đọc thêm về filter vs map )
+            set({ messages: updatedMessages });
+            toast.success("Message deleted successfully");
+        } catch (error) {
+            console.error("Error deleting message:", error);
+            toast.error("Failed to delete message. Please try again.");
+        }
     },
 }));
