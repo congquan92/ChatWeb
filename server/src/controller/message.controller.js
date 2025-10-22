@@ -3,6 +3,7 @@ import Message from "../models/message.model.js";
 import cloudinary from "../lib/cloudinary.js";
 import fs from "fs";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { encryptMessage, decryptMessage } from "../lib/encryption.js";
 
 export const getUserSidebar = async (req, res) => {
     try {
@@ -25,7 +26,17 @@ export const getMessage = async (req, res) => {
                 { senderId: userToChatId, receiverId: myId },
             ],
         });
-        res.status(200).json(messages);
+
+        // Giải mã tin nhắn trước khi gửi cho client
+        const decryptedMessages = messages.map((msg) => {
+            const msgObj = msg.toObject();
+            if (msgObj.text) {
+                msgObj.text = decryptMessage(msgObj.text);
+            }
+            return msgObj;
+        });
+
+        res.status(200).json(decryptedMessages);
     } catch (error) {
         console.error("Error fetching getMessage:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -80,21 +91,31 @@ export const sendMessage = async (req, res) => {
                 if (err) console.warn("Cannot remove temp file:", err.message);
             });
         }
+
+        // Mã hóa tin nhắn trước khi lưu vào database
+        const encryptedText = text?.trim() ? encryptMessage(text.trim()) : "";
+
         const newMessage = await Message({
             senderId,
             receiverId,
-            text: text?.trim() || "",
+            text: encryptedText,
             image: imgurl,
         });
 
         await newMessage.save();
 
-        const receiverSocketId = getReceiverSocketId(receiverId);
-        if (receiverSocketId) {
-            io.to(receiverSocketId).emit("newMessage", newMessage);
+        // Giải mã tin nhắn trước khi gửi qua socket
+        const messageToSend = newMessage.toObject();
+        if (messageToSend.text) {
+            messageToSend.text = decryptMessage(messageToSend.text);
         }
 
-        return res.status(201).json(newMessage);
+        const receiverSocketId = getReceiverSocketId(receiverId);
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit("newMessage", messageToSend);
+        }
+
+        return res.status(201).json(messageToSend);
     } catch (error) {
         console.error("Error sending message:", error);
         return res.status(500).json({ message: "Internal server error" });
@@ -137,12 +158,21 @@ export const editMessage = async (req, res) => {
             return res.status(403).json({ message: "You are not authorized to edit this message" });
         }
 
-        const updatedMessage = await Message.findByIdAndUpdate(messageId, { text }, { new: true }); // có thể sau này thêm field edit trong schema
+        // Mã hóa tin nhắn mới trước khi update
+        const encryptedText = encryptMessage(text);
+
+        const updatedMessage = await Message.findByIdAndUpdate(messageId, { text: encryptedText }, { new: true }); // có thể sau này thêm field edit trong schema
         const receiverSocketId = getReceiverSocketId(receiverId);
         if (receiverSocketId) {
-            io.to(receiverSocketId).emit("editMessage", { messageId, newText: updatedMessage.text });
+            // Gửi tin nhắn đã giải mã qua socket
+            io.to(receiverSocketId).emit("editMessage", { messageId, newText: text });
         }
-        res.status(200).json(updatedMessage);
+
+        // Trả về tin nhắn đã giải mã
+        const response = updatedMessage.toObject();
+        response.text = text;
+
+        res.status(200).json(response);
     } catch (error) {
         console.error("Error editing message:", error);
         res.status(500).json({ message: "Internal server error" });
