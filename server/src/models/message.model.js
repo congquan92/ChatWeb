@@ -19,6 +19,10 @@ const messageSchema = new mongoose.Schema(
             type: String,
             default: null,
         },
+        // Encrypted AES key for RSA-AES hybrid encryption
+        encryptedAESKey: {
+            type: String,
+        },
     },
     { timestamps: true }
 );

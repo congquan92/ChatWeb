@@ -21,6 +21,16 @@ const userSchema = new mongoose.Schema(
             type: String,
             default: "",
         },
+        // RSA keys for E2EE
+        publicKey: {
+            type: String,
+            required: true,
+        },
+        // Private key encrypted - chỉ gửi về client khi login/signup
+        encryptedPrivateKey: {
+            type: String,
+            required: true,
+        },
     },
     { timestamps: true }
 );

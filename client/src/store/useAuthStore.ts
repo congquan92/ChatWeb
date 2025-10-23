@@ -2,12 +2,14 @@ import { create } from "zustand";
 import { axiosInstance } from "../lib/axios";
 import toast from "react-hot-toast";
 import { io, Socket } from "socket.io-client";
+import { savePrivateKeyToIndexedDB, deletePrivateKeyFromIndexedDB } from "../lib/encryption";
 
 interface AuthUser {
     _id: string;
     fullname: string;
     email: string;
     profilePic: string;
+    publicKey: string; // Thêm publicKey
     createdAt: string;
     updatedAt: string;
 }
@@ -59,6 +61,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         try {
             const res = await axiosInstance.post("/auth/sign-up", data);
             const user = res.data.data;
+
+            // Lưu private key vào IndexedDB (chỉ lần đầu)
+            if (user.privateKey) {
+                await savePrivateKeyToIndexedDB(user._id, user.privateKey);
+            }
+
             set({ authUser: user });
             toast.success("Signup successful!");
             get().connectSocket(user);
@@ -72,10 +80,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     logout: async () => {
         try {
+            const userId = get().authUser?._id;
             await axiosInstance.post("/auth/logout");
-            {
-                /* khi mà m đăng xuất cái checkAuth sẽ được tự gọi do bị thay đổi và hệ thống được cập nhật dữ liêu  */
+
+            // Xóa private key khỏi IndexedDB khi logout
+            if (userId) {
+                await deletePrivateKeyFromIndexedDB(userId);
             }
+
             set({ authUser: null });
             toast.success("Logout successful!");
             get().disconnectSocket();
@@ -90,6 +102,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         try {
             const res = await axiosInstance.post("/auth/login", data);
             const user = res.data.data;
+
+            // Lưu private key vào IndexedDB (server gửi lại mỗi lần login)
+            if (user.privateKey) {
+                await savePrivateKeyToIndexedDB(user._id, user.privateKey);
+            }
+
             console.log("Login response user:", user);
             console.log("User ID:", user?._id);
             set({ authUser: user });
@@ -97,7 +115,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             get().connectSocket(user);
         } catch (error) {
             console.error("Login error:", error);
-            // const errA = error as AxiosError;
             toast.error(`Login failed. Please try again.`);
         } finally {
             set({ isLoggingIn: false });

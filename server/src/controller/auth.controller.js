@@ -3,6 +3,7 @@ import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import fs from "fs";
+import { generateRSAKeyPair, encryptPrivateKey, decryptPrivateKey } from "../lib/encryption.js";
 
 const login = async (req, res) => {
     const { email, password } = req.body;
@@ -18,7 +19,21 @@ const login = async (req, res) => {
         }
 
         generateToken(user._id, res);
-        return res.status(200).json({ message: "Login successful.", data: { _id: user._id, fullname: user.fullname, email: user.email, profilePic: user.profilePic } });
+
+        // Giải mã private key để gửi về client
+        const privateKey = decryptPrivateKey(user.encryptedPrivateKey);
+
+        return res.status(200).json({
+            message: "Login successful.",
+            data: {
+                _id: user._id,
+                fullname: user.fullname,
+                email: user.email,
+                profilePic: user.profilePic,
+                publicKey: user.publicKey,
+                privateKey: privateKey, // Gửi private key về client để lưu IndexedDB
+            },
+        });
     } catch (error) {
         console.error("Error during login:", error);
         return res.status(500).json({ message: "Internal server error." });
@@ -40,17 +55,36 @@ const signUp = async (req, res) => {
         }
 
         const hashPassword = await bcrypt.hash(password, 10);
+
+        // Server generate RSA key pair
+        const { publicKey, privateKey } = generateRSAKeyPair();
+
+        // Mã hóa private key trước khi lưu database
+        const encryptedPrivateKey = encryptPrivateKey(privateKey);
+
         const newUser = new User({
             email,
             fullname,
             password: hashPassword,
+            publicKey,
+            encryptedPrivateKey, // Lưu private key đã mã hóa
         });
 
         if (newUser) {
             // gen jwt token
             generateToken(newUser._id, res);
             await newUser.save();
-            return res.status(201).json({ message: "User created successfully.", data: { _id: newUser._id, fullname: newUser.fullname, email: newUser.email, profilePic: newUser.profilePic } });
+            return res.status(201).json({
+                message: "User created successfully.",
+                data: {
+                    _id: newUser._id,
+                    fullname: newUser.fullname,
+                    email: newUser.email,
+                    profilePic: newUser.profilePic,
+                    publicKey: newUser.publicKey,
+                    privateKey: privateKey, // Gửi private key (chưa mã hóa) về client để lưu IndexedDB
+                },
+            });
         } else {
             return res.status(400).json({ message: "User creation failed." });
         }

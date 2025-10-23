@@ -5,7 +5,6 @@
     "main": "src/index.js",
     "scripts": {
         "dev": "nodemon src/index.js",
-        "generate-keys": "node src/scripts/generateKeys.js",
         "test-encryption": "node src/scripts/testEncryption.js",
         "add_user": "node src/seeds/user.seed.js"
     },

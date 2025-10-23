@@ -12,6 +12,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
     "axios": "^1.12.2",
+    "buffer": "^6.0.3",
     "crypto-js": "^4.2.0",
     "lucide-react": "^0.546.0",
     "node-rsa": "^1.1.1",

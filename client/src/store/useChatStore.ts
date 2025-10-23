@@ -2,12 +2,14 @@ import { create } from "zustand";
 import { axiosInstance } from "../lib/axios";
 import toast from "react-hot-toast";
 import { useAuthStore } from "./useAuthStore";
+import { encryptMessage, decryptMessage, getPrivateKeyFromIndexedDB } from "../lib/encryption";
 
 interface User {
     _id: string;
     fullname: string;
     email: string;
     profilePic: string;
+    publicKey: string; // Thêm publicKey
     createdAt: string;
     updatedAt: string;
 }
@@ -18,6 +20,7 @@ interface Message {
     receiverId: string;
     text?: string;
     image?: string;
+    encryptedAESKey?: string; // Thêm encrypted AES key
     createdAt: string;
     updatedAt: string;
 }
@@ -63,7 +66,36 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         set({ isMessagesLoading: true });
         try {
             const res = await axiosInstance.get(`/messages/${userId}`);
-            set({ messages: res.data });
+            const encryptedMessages = res.data;
+
+            // Giải mã tin nhắn trước khi lưu vào state
+            const authUser = useAuthStore.getState().authUser;
+            if (!authUser) {
+                set({ messages: encryptedMessages });
+                return;
+            }
+
+            const privateKey = await getPrivateKeyFromIndexedDB(authUser._id);
+            if (!privateKey) {
+                console.warn("No private key found, messages will not be decrypted");
+                set({ messages: encryptedMessages });
+                return;
+            }
+
+            const decryptedMessages = encryptedMessages.map((msg: Message) => {
+                if (msg.text && msg.encryptedAESKey) {
+                    try {
+                        const decryptedText = decryptMessage(msg.text, msg.encryptedAESKey, privateKey);
+                        return { ...msg, text: decryptedText };
+                    } catch (error) {
+                        console.error("Failed to decrypt message:", error);
+                        return { ...msg, text: "[Encrypted message]" };
+                    }
+                }
+                return msg;
+            });
+
+            set({ messages: decryptedMessages });
         } catch (error) {
             console.error("Error fetching messages:", error);
             toast.error("Failed to load messages. Please try again.");
@@ -90,9 +122,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             toast.error("No conversation selected");
             return;
         }
+
+        const authUser = useAuthStore.getState().authUser;
+        if (!authUser) {
+            toast.error("Not authenticated");
+            return;
+        }
+
         try {
+            const text = form.get("text") as string;
+
+            // Mã hóa text nếu có
+            if (text && text.trim()) {
+                const { encryptedMessage, encryptedAESKey } = encryptMessage(text.trim(), selectedUser.publicKey);
+
+                // Thay thế text bằng encrypted text
+                form.set("text", encryptedMessage);
+                form.set("encryptedAESKey", encryptedAESKey);
+            }
+
             const res = await axiosInstance.post(`/messages/send/${selectedUser._id}`, form);
-            const newMsg = res.data; // server trả về 1 message object
+            const newMsg = res.data;
+
+            // Giải mã tin nhắn trước khi hiển thị
+            if (newMsg.text && newMsg.encryptedAESKey) {
+                const privateKey = await getPrivateKeyFromIndexedDB(authUser._id);
+                if (privateKey) {
+                    try {
+                        newMsg.text = decryptMessage(newMsg.text, newMsg.encryptedAESKey, privateKey);
+                    } catch (error) {
+                        console.error("Failed to decrypt sent message:", error);
+                    }
+                }
+            }
 
             set((state) => ({
                 messages: [...(state.messages ?? []), newMsg],
@@ -108,14 +170,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (!selectedUser) return;
         const socket = useAuthStore.getState().socket;
 
-        socket?.on("newMessage", (message) => {
+        socket?.on("newMessage", async (message) => {
             const isMessSentByAuthUser = message.senderId === selectedUser._id;
-            if (!isMessSentByAuthUser) return; // chỉ nhận message từ user đang chat
+            if (!isMessSentByAuthUser) return;
+
+            // Giải mã tin nhắn nhận được
+            const authUser = useAuthStore.getState().authUser;
+            if (authUser && message.text && message.encryptedAESKey) {
+                const privateKey = await getPrivateKeyFromIndexedDB(authUser._id);
+                if (privateKey) {
+                    try {
+                        message.text = decryptMessage(message.text, message.encryptedAESKey, privateKey);
+                    } catch (error) {
+                        console.error("Failed to decrypt received message:", error);
+                        message.text = "[Encrypted message]";
+                    }
+                }
+            }
+
             set((state) => ({
                 messages: [...(state.messages ?? []), message],
             }));
         });
-        // 2. nhận sự kiện xóa từ server bắt render giao diện cho người nhận (read more :https://docs.google.com/document/d/1uTVC5umL_rOf7Vvud9WZsB4JYNTYlcqBORrhNDlfsaE/edit?usp=drive_link)
 
         socket?.on("deleteMessage", (messageId) => {
             set((state) => ({
@@ -124,10 +200,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             toast.success("1 message was deleted");
         });
 
-        socket?.on("editMessage", ({ messageId, newText }) => {
+        socket?.on("editMessage", async ({ messageId, newText, encryptedAESKey }) => {
             console.log("Received editMessage event:", { messageId, newText });
+
+            // Giải mã text đã chỉnh sửa
+            let decryptedText = newText;
+            const authUser = useAuthStore.getState().authUser;
+            if (authUser && encryptedAESKey) {
+                const privateKey = await getPrivateKeyFromIndexedDB(authUser._id);
+                if (privateKey) {
+                    try {
+                        decryptedText = decryptMessage(newText, encryptedAESKey, privateKey);
+                    } catch (error) {
+                        console.error("Failed to decrypt edited message:", error);
+                        decryptedText = "[Encrypted message]";
+                    }
+                }
+            }
+
             set((state) => ({
-                messages: state.messages.map((msg) => (msg._id === messageId ? { ...msg, text: newText } : msg)),
+                messages: state.messages.map((msg) => (msg._id === messageId ? { ...msg, text: decryptedText } : msg)),
             }));
             toast.success("1 message was edited");
         });
@@ -155,10 +247,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     },
 
     editMessage: async (messageId: string, receiverId: string, text: string) => {
-        const { messages } = get();
+        const { messages, selectedUser } = get();
+        const authUser = useAuthStore.getState().authUser;
+
+        if (!authUser || !selectedUser) {
+            toast.error("Not authenticated");
+            return;
+        }
+
         try {
-            const res = await axiosInstance.put(`/messages/edit/${messageId}/${receiverId}`, { text });
+            // Mã hóa text mới
+            const { encryptedMessage, encryptedAESKey } = encryptMessage(text, selectedUser.publicKey);
+
+            const res = await axiosInstance.put(`/messages/edit/${messageId}/${receiverId}`, {
+                text: encryptedMessage,
+                encryptedAESKey: encryptedAESKey,
+            });
+
             const updatedMessage = res.data;
+
+            // Giải mã để hiển thị
+            if (updatedMessage.text && updatedMessage.encryptedAESKey) {
+                const privateKey = await getPrivateKeyFromIndexedDB(authUser._id);
+                if (privateKey) {
+                    try {
+                        updatedMessage.text = decryptMessage(updatedMessage.text, updatedMessage.encryptedAESKey, privateKey);
+                    } catch (error) {
+                        console.error("Failed to decrypt edited message:", error);
+                    }
+                }
+            }
+
             const updatedMessages = messages.map((msg) => (msg._id === messageId ? updatedMessage : msg));
             set({ messages: updatedMessages });
             toast.success("Message edited successfully");

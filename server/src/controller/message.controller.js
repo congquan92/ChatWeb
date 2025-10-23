@@ -3,12 +3,11 @@ import Message from "../models/message.model.js";
 import cloudinary from "../lib/cloudinary.js";
 import fs from "fs";
 import { getReceiverSocketId, io } from "../lib/socket.js";
-import { encryptMessage, decryptMessage } from "../lib/encryption.js";
 
 export const getUserSidebar = async (req, res) => {
     try {
         const userIdLoggend = req.user._id;
-        const filteredUsers = await User.find({ _id: { $ne: userIdLoggend } }).select("-password"); // $ne lay tat ca tri id do
+        const filteredUsers = await User.find({ _id: { $ne: userIdLoggend } }).select("-password");
         res.status(200).json(filteredUsers);
     } catch (error) {
         console.error("Error fetching getUserSidebar:", error);
@@ -27,16 +26,9 @@ export const getMessage = async (req, res) => {
             ],
         });
 
-        // Giải mã tin nhắn trước khi gửi cho client
-        const decryptedMessages = messages.map((msg) => {
-            const msgObj = msg.toObject();
-            if (msgObj.text) {
-                msgObj.text = decryptMessage(msgObj.text);
-            }
-            return msgObj;
-        });
-
-        res.status(200).json(decryptedMessages);
+        // Trả về tin nhắn đã mã hóa - client sẽ tự giải mã
+        // Server KHÔNG giải mã vì không có private key (E2EE)
+        res.status(200).json(messages);
     } catch (error) {
         console.error("Error fetching getMessage:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -74,7 +66,7 @@ export const getMessage = async (req, res) => {
 
 export const sendMessage = async (req, res) => {
     try {
-        const { text } = req.body; // text từ form-data
+        const { text, encryptedAESKey } = req.body; // Client gửi text đã mã hóa và encrypted AES key
         const { id: receiverId } = req.params;
         const senderId = req.user._id;
 
@@ -92,23 +84,19 @@ export const sendMessage = async (req, res) => {
             });
         }
 
-        // Mã hóa tin nhắn trước khi lưu vào database
-        const encryptedText = text?.trim() ? encryptMessage(text.trim()) : "";
-
+        // Server chỉ lưu trữ, KHÔNG mã hóa (E2EE - mã hóa ở client)
         const newMessage = await Message({
             senderId,
             receiverId,
-            text: encryptedText,
+            text: text || "", // Text đã được mã hóa từ client
             image: imgurl,
+            encryptedAESKey: encryptedAESKey || "", // AES key đã được mã hóa từ client
         });
 
         await newMessage.save();
 
-        // Giải mã tin nhắn trước khi gửi qua socket
+        // Gửi tin nhắn đã mã hóa qua socket - client tự giải mã
         const messageToSend = newMessage.toObject();
-        if (messageToSend.text) {
-            messageToSend.text = decryptMessage(messageToSend.text);
-        }
 
         const receiverSocketId = getReceiverSocketId(receiverId);
         if (receiverSocketId) {
@@ -152,27 +140,34 @@ export const editMessage = async (req, res) => {
     try {
         const senderId = req.user._id;
         const { messageId, receiverId } = req.params;
-        const { text } = req.body;
+        const { text, encryptedAESKey } = req.body; // Client gửi text đã mã hóa
+
         const checked = await Message.findOne({ _id: messageId, receiverId, senderId });
         if (!checked) {
             return res.status(403).json({ message: "You are not authorized to edit this message" });
         }
 
-        // Mã hóa tin nhắn mới trước khi update
-        const encryptedText = encryptMessage(text);
+        // Server chỉ update, KHÔNG mã hóa (E2EE)
+        const updatedMessage = await Message.findByIdAndUpdate(
+            messageId,
+            {
+                text: text, // Text đã được mã hóa từ client
+                encryptedAESKey: encryptedAESKey,
+            },
+            { new: true }
+        );
 
-        const updatedMessage = await Message.findByIdAndUpdate(messageId, { text: encryptedText }, { new: true }); // có thể sau này thêm field edit trong schema
         const receiverSocketId = getReceiverSocketId(receiverId);
         if (receiverSocketId) {
-            // Gửi tin nhắn đã giải mã qua socket
-            io.to(receiverSocketId).emit("editMessage", { messageId, newText: text });
+            // Gửi tin nhắn đã mã hóa qua socket với cả encryptedAESKey
+            io.to(receiverSocketId).emit("editMessage", {
+                messageId,
+                newText: updatedMessage.text,
+                encryptedAESKey: updatedMessage.encryptedAESKey,
+            });
         }
 
-        // Trả về tin nhắn đã giải mã
-        const response = updatedMessage.toObject();
-        response.text = text;
-
-        res.status(200).json(response);
+        res.status(200).json(updatedMessage);
     } catch (error) {
         console.error("Error editing message:", error);
         res.status(500).json({ message: "Internal server error" });

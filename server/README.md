@@ -1,95 +1,160 @@
-## SET UP
+# ChatWeb - End-to-End Encrypted Messaging System
 
-**1.** tạo file `.env` và setting theo `.env.example` .
+Hệ thống chat web với **mã hóa đầu cuối (E2EE)** sử dụng **RSA-AES Hybrid Encryption**.
 
-**2.** chạy `npm install` để cài đặt dependencies.
+---
 
-**3.** chạy `npm run generate-keys` để tạo RSA key pair và AES key.
+## 🎯 Hệ Thống Làm Gì?
 
-**4.** chạy `npm run add_user` để tạo người dùng mới có sẵn .
+**ChatWeb** là ứng dụng nhắn tin thời gian thực với mã hóa đầu cuối, đảm bảo:
 
-```
-{
-    "username": "nguyencongquan9211@gmail.com",
-    "password": "123456"
-},
-{
-    "username": "karina@gmail.com",
-    "password": "123456"
-},
-{
-    "username": "sophia@gmail.com",
-    "password": "123456"
-}
-```
+-   ✅ **Chỉ người gửi và người nhận** có thể đọc được nội dung tin nhắn
+-   ✅ **Server không thể giải mã** tin nhắn (không có private key)
+-   ✅ **Tin nhắn được mã hóa** trước khi gửi lên server
+-   ✅ **Private key lưu trên trình duyệt** (IndexedDB), không lưu server
 
-**6.** chạy `npm run test-encryption` test xem mã hóa có hoạt động không.
+---
+
+## 🔐 Cơ Chế Mã Hóa
+
+Hệ thống sử dụng **RSA-AES Hybrid Encryption**:
+
+### 1. Đăng ký / Đăng nhập
 
 ```
--> Nếu hiện "✅ Match: YES" → Encryption OK.
+Client                    Server                    Database
+  |                          |                          |
+  |----(1) Signup/Login----->|                          |
+  |                          |                          |
+  |                     (2) Tạo RSA Key Pair            |
+  |                     (Public + Private)              |
+  |                          |                          |
+  |                     (3) Mã hóa Private Key          |
+  |                          |---(4) Lưu Public Key---> |
+  |                          |                          |
+  |<--(5) Gửi Private Key----|                          |
+  |                          |                          |
+(6) Lưu Private Key vào IndexedDB
 ```
 
-**7.** chạy `npm run dev` để khởi động server.
-
-## ⚙️ Cách Hoạt Động
-
-### Gửi tin nhắn
+### 2. Gửi tin nhắn
 
 ```
-Client → [Tin nhắn] → AES Encrypt → Server → Lưu DB (mã hóa)
-
+Client A                                          Server                   Client B
+   |                                                 |                         |
+(1) Nhập: "Hello"                                    |                         |
+   |                                                 |                         |
+(2) Tạo AES Key ngẫu nhiên                           |                         |
+   |                                                 |                         |
+(3) Mã hóa "Hello" → "U2FsdGVkX1+..."                |                         |
+   |                                                 |                         |
+(4) Lấy Public Key của B                             |                         |
+   |                                                 |                         |
+(5) Mã hóa AES Key bằng Public Key của B             |                         |
+   |                                                 |                         |
+   |---(6) Gửi {encryptedMessage, encryptedAESKey}-> |                         |
+   |                                                 |                         |
+   |                                        (7) Lưu DB (đã mã hóa)             |
+   |                                                 |                         |
+   |                                     (8) Socket.IO realtime                |
+   |                                                 |----(9) Gửi tin đã mã--->|
+   |                                                 |                         |
+   |                                                 |         (10) Lấy Private Key từ IndexedDB
+   |                                                 |                         |
+   |                                                 |         (11) Giải mã AES Key
+   |                                                 |                         |
+   |                                                 |         (12) Giải mã "Hello"
+   |                                                 |                         |
+   |                                                 |         (13) Hiển thị: "Hello"
 ```
 
-### Nhận tin nhắn
+### 3. Nhận tin nhắn
+
+-   **Client B** lấy Private Key từ IndexedDB
+-   Dùng Private Key giải mã AES Key
+-   Dùng AES Key giải mã nội dung tin nhắn
+-   Server **không thể** giải mã vì không có Private Key
+
+---
+
+## 🚀 Cài Đặt & Chạy
+
+### Backend (Server)
+
+```bash
+cd server
+npm install
+npm run add_user       # Tạo user demo
+npm run dev           # Chạy server (port 5001)
+```
+
+### Frontend (Client)
+
+```bash
+cd client
+npm install
+npm run dev           # Chạy client (port 5173)
+```
+
+### User Demo
 
 ```
-DB (mã hóa) → Server → AES Decrypt → Client → Hiển thị
-
+Email: nguyencongquan9211@gmail.com | karina@gmail.com | sophia@gmail.com
+Password: 123456
 ```
 
-## 🧠 Security Notes
+---
 
-✅ **Hiện tại (Demo)**
+## 🛠️ Công Nghệ Sử Dụng
 
--   AES mã hóa text
+| Phần     | Công nghệ                                            |
+| -------- | ---------------------------------------------------- |
+| Frontend | React + TypeScript + Vite + TailwindCSS + Socket.IO  |
+| Backend  | Node.js + Express + MongoDB + Socket.IO              |
+| Mã hóa   | RSA (2048-bit) + AES (256-bit) + CryptoJS + node-rsa |
+| Lưu trữ  | MongoDB (tin nhắn mã hóa), IndexedDB (private key)   |
 
--   Lưu tin nhắn mã hóa trong DB
+---
 
--   Tự động giải mã khi render
+## 📁 Cấu Trúc Dự Án
 
-🔄 **Cần làm thêm (Production)**
+```
+ChatWeb/
+├── client/          # Frontend (React + TypeScript)
+│   └── src/
+│       ├── lib/encryption.ts    # Mã hóa/giải mã client-side
+│       └── store/               # State management (Zustand)
+│
+└── server/          # Backend (Node.js + Express)
+    └── src/
+        ├── lib/encryption.js    # Tạo RSA keys, mã hóa private key
+        ├── models/
+        │   └── message.model.js # Schema: encryptedMessage + encryptedAESKey
+        └── controller/
+            └── message.controller.js  # Chỉ lưu/chuyển tiếp (không giải mã)
+```
+
+---
+
+## 🔑 Bảo Mật
+
+✅ **Đã Triển Khai**
 
 -   End-to-End Encryption (E2EE)
+-   RSA-AES Hybrid Encryption
+-   Private Key lưu IndexedDB (không gửi lên server sau lần đầu)
+-   Server không thể đọc nội dung tin nhắn
+-   JWT Authentication + bcrypt hashing password
 
--   Key Exchange (Diffie-Hellman)
+⚠️ **Lưu Ý**
 
--   Key Rotation
-
--   File/Image encryption
-
--   Key Management (AWS KMS, Azure Vault)
-
--   Perfect Forward Secrecy
-
-## Flow
-
-```
-User A: "Hello World"
-↓
-Client A → Server (AES encrypt)
-↓
-Database: "U2FsdGVkX1+..."
-↓
-Server → Client B (AES decrypt)
-↓
-Client B: "Hello World"
-
-```
+-   Private key chỉ tồn tại trên trình duyệt (nếu xóa cache → mất key → không đọc được tin cũ)
+-   Chưa hỗ trợ backup/restore private key
+-   Chưa hỗ trợ multi-device (cùng tài khoản nhiều thiết bị)
+-   Chưa mã hóa file/hình ảnh
 
 ---
 
 ## 📜 License
 
 MIT License
-
----

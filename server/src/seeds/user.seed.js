@@ -1,6 +1,7 @@
 import { config } from "dotenv";
 import { connectDB } from "../lib/db.js";
 import User from "../models/user.model.js";
+import { generateRSAKeyPair, encryptPrivateKey } from "../lib/encryption.js";
 
 config();
 
@@ -30,11 +31,25 @@ const seedDatabase = async () => {
     try {
         await connectDB();
 
-        await User.insertMany(seedUsers);
-        console.log("Database seeded successfully");
+        // Generate RSA keys for each user
+        const usersWithKeys = seedUsers.map((user) => {
+            const { publicKey, privateKey } = generateRSAKeyPair();
+            const encryptedPrivateKey = encryptPrivateKey(privateKey);
+
+            return {
+                ...user,
+                publicKey,
+                encryptedPrivateKey,
+            };
+        });
+
+        await User.insertMany(usersWithKeys);
+        console.log("✅ Database seeded successfully with RSA keys");
+        console.log("📝 Note: Private keys are encrypted in database");
         process.exit(0);
     } catch (error) {
-        console.error("Error seeding database:", error);
+        console.error("❌ Error seeding database:", error);
+        process.exit(1);
     }
 };
 
